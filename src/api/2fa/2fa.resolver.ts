@@ -12,6 +12,12 @@ import { Response } from 'express';
 import { GraphQLError } from 'graphql';
 import { CurrentUser } from 'src/auth/auth.decorators';
 import { TwoFactorSession } from 'src/libs/2fa/2fa.types';
+import {
+  AttemptLimiterService,
+  MAX_TWO_FACTOR_ATTEMPTS,
+  TWO_FACTOR_ATTEMPT_WINDOW_SECONDS,
+  twoFactorAttemptKey,
+} from 'src/libs/auth/attemptLimiter.service';
 import { PasskeyService } from 'src/libs/passkey/passkey.service';
 import { RedisService } from 'src/libs/redis/redis.service';
 import { TwoFactorRepository } from 'src/repo/2fa/2fa.repo';
@@ -33,6 +39,7 @@ export class TwoFactorLoginMutationsResolver {
     private accountService: AccountService,
     private twoFactorService: TwoFactorService,
     private redisService: RedisService,
+    private attemptLimiter: AttemptLimiterService,
   ) {}
 
   @ResolveField()
@@ -40,18 +47,28 @@ export class TwoFactorLoginMutationsResolver {
     @Args('input') input: TwoFactorOTPLogin,
     @Context() { res }: { res: Response },
   ) {
-    const session = await this.redisService.get<TwoFactorSession>(
-      twoFactorSessionKey(input.session_id),
-    );
+    const sessionKey = twoFactorSessionKey(input.session_id);
+    const attemptKey = twoFactorAttemptKey(input.session_id);
+
+    const session = await this.redisService.get<TwoFactorSession>(sessionKey);
 
     if (!session) {
       throw new GraphQLError(`Could not verify`);
     }
 
+    await this.attemptLimiter.registerAttempt(
+      attemptKey,
+      MAX_TWO_FACTOR_ATTEMPTS,
+      TWO_FACTOR_ATTEMPT_WINDOW_SECONDS,
+    );
+
     const { accountId, accessToken, refreshToken } = session;
 
     const isValid = await this.twoFactorService.validOTP(accountId, input.code);
     if (!isValid) throw new GraphQLError(`Token invalid`);
+
+    await this.redisService.delete(sessionKey);
+    await this.attemptLimiter.reset(attemptKey);
 
     await this.accountService.setLoginCookies(
       res,

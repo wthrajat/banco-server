@@ -8,7 +8,7 @@ import {
   lightningAddressToPubkeyUrl,
   lightningAddressToUrl,
 } from 'src/utils/lnurl';
-import { fetch } from 'undici';
+import { publicFetch } from 'src/utils/url';
 
 import {
   LnUrlInfoSchema,
@@ -76,7 +76,7 @@ export class LnUrlRemoteService {
 
     this.logger.debug('Getting address response', { url: urlString });
 
-    const info = await fetch(urlString);
+    const info = await publicFetch(urlString);
     const data = await info.json();
 
     return LnUrlResultSchema.parse(data);
@@ -85,7 +85,7 @@ export class LnUrlRemoteService {
   async getInfo(money_address: string): Promise<LnUrlInfoSchemaType> {
     const url = lightningAddressToUrl(money_address);
 
-    const fetchInfo = await fetch(url);
+    const fetchInfo = await publicFetch(url);
 
     const data = await fetchInfo.json();
 
@@ -96,7 +96,9 @@ export class LnUrlRemoteService {
 
   async getPubkey(money_address: string) {
     try {
-      const rawInfo = await fetch(lightningAddressToPubkeyUrl(money_address));
+      const rawInfo = await publicFetch(
+        lightningAddressToPubkeyUrl(money_address),
+      );
 
       const info = await rawInfo.json();
 

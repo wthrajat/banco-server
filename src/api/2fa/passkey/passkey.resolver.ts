@@ -9,6 +9,12 @@ import { AccountService } from 'src/api/account/account.service';
 import { TwoFactorPasskeyLoginMutations } from 'src/api/account/account.types';
 import { CurrentUser } from 'src/auth/auth.decorators';
 import { TwoFactorSession } from 'src/libs/2fa/2fa.types';
+import {
+  AttemptLimiterService,
+  MAX_TWO_FACTOR_ATTEMPTS,
+  TWO_FACTOR_ATTEMPT_WINDOW_SECONDS,
+  twoFactorAttemptKey,
+} from 'src/libs/auth/attemptLimiter.service';
 import { PasskeyTwoFactorService } from 'src/libs/passkey/passkeyTwoFactor.service';
 import { RedisService } from 'src/libs/redis/redis.service';
 import { toWithErrorSync } from 'src/utils/async';
@@ -57,6 +63,7 @@ export class TwoFactorPasskeyLoginMutationsResolver {
     private redisService: RedisService,
     private accountService: AccountService,
     private passkeyService: PasskeyTwoFactorService,
+    private attemptLimiter: AttemptLimiterService,
   ) {}
 
   @ResolveField()
@@ -79,13 +86,20 @@ export class TwoFactorPasskeyLoginMutationsResolver {
     @Args('input') input: TwoFactorPasskeyAuthLoginInput,
     @Context() { res }: { res: Response },
   ) {
-    const session = await this.redisService.get<TwoFactorSession>(
-      twoFactorSessionKey(input.session_id),
-    );
+    const sessionKey = twoFactorSessionKey(input.session_id);
+    const attemptKey = twoFactorAttemptKey(input.session_id);
+
+    const session = await this.redisService.get<TwoFactorSession>(sessionKey);
 
     if (!session) {
       throw new GraphQLError(`Could not verify`);
     }
+
+    await this.attemptLimiter.registerAttempt(
+      attemptKey,
+      MAX_TWO_FACTOR_ATTEMPTS,
+      TWO_FACTOR_ATTEMPT_WINDOW_SECONDS,
+    );
 
     const { accountId, accessToken, refreshToken } = session;
 
@@ -105,6 +119,9 @@ export class TwoFactorPasskeyLoginMutationsResolver {
     if (!verified) {
       throw new GraphQLError('Invalid authentication. Please try again.');
     }
+
+    await this.redisService.delete(sessionKey);
+    await this.attemptLimiter.reset(attemptKey);
 
     await this.accountService.setLoginCookies(
       res,

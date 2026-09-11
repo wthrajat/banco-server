@@ -202,6 +202,10 @@ export class PasskeyTwoFactorService {
       throw new GraphQLError('Unknown passkey. Please try to login again.');
     }
 
+    if (passkey.account_id !== account_id) {
+      throw new GraphQLError('Unknown passkey. Please try to login again.');
+    }
+
     const { publicKey, counter, transports } = passkey.payload;
 
     try {

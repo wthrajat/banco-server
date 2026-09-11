@@ -76,7 +76,10 @@ export class PasskeyMutationsResolver {
   }
 
   @ResolveField()
-  async authenticate(@Args('input') input: PasskeyAuthenticateInput) {
+  async authenticate(
+    @Args('input') input: PasskeyAuthenticateInput,
+    @CurrentUser() { user_id }: any,
+  ) {
     const [parsedOptions, error] = toWithErrorSync(
       () => JSON.parse(input.options) as AuthenticationResponseJSON,
     );
@@ -93,7 +96,7 @@ export class PasskeyMutationsResolver {
 
     const passkey = await this.passkeyRepo.getPasskeyByUserHandle(userHandle);
 
-    if (!passkey) {
+    if (!passkey || passkey.account_id !== user_id) {
       throw new GraphQLError('Unknown user for authentication');
     }
 

@@ -16,6 +16,12 @@ import { CurrentUser, Public, SkipAccessCheck } from 'src/auth/auth.decorators';
 import { RefreshTokenGuard } from 'src/auth/guards/refreshToken.guard';
 import { TwoFactorSession } from 'src/libs/2fa/2fa.types';
 import { AmbossService } from 'src/libs/amboss/amboss.service';
+import {
+  AttemptLimiterService,
+  LOGIN_ATTEMPT_WINDOW_SECONDS,
+  loginAttemptKey,
+  MAX_LOGIN_ATTEMPTS,
+} from 'src/libs/auth/attemptLimiter.service';
 import { AuthService } from 'src/libs/auth/auth.service';
 import { CryptoService } from 'src/libs/crypto/crypto.service';
 import { ContextType } from 'src/libs/graphql/context.type';
@@ -167,6 +173,7 @@ export class LoginMutationsResolver {
     private accountService: AccountService,
     private twoFactorRepo: TwoFactorRepository,
     private redisService: RedisService,
+    private attemptLimiter: AttemptLimiterService,
   ) {}
 
   @ResolveField()
@@ -175,6 +182,14 @@ export class LoginMutationsResolver {
     @Context() { res }: { res: Response },
   ): Promise<LoginType> {
     const normalizedEmail = input.email.trim();
+
+    const attemptKey = loginAttemptKey(normalizedEmail.toLowerCase());
+
+    await this.attemptLimiter.registerAttempt(
+      attemptKey,
+      MAX_LOGIN_ATTEMPTS,
+      LOGIN_ATTEMPT_WINDOW_SECONDS,
+    );
 
     const account = await this.accountRepo.findOne(normalizedEmail);
 
@@ -190,6 +205,8 @@ export class LoginMutationsResolver {
     if (!verified) {
       throw new GraphQLError('Invalid email or password.');
     }
+
+    await this.attemptLimiter.reset(attemptKey);
 
     const { accessToken, refreshToken } = await this.authService.getTokens(
       account.id,

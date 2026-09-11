@@ -17,7 +17,7 @@ import { CustomLogger, Logger } from 'src/libs/logging';
 import { ContactRepoService } from 'src/repo/contact/contact.repo';
 import { WalletRepoService } from 'src/repo/wallet/wallet.repo';
 import { lightningAddressToUrl } from 'src/utils/lnurl';
-import { fetch } from 'undici';
+import { publicFetch } from 'src/utils/url';
 import { v5 } from 'uuid';
 
 import { checkPayloadLimit } from './contact.helpers';
@@ -197,14 +197,10 @@ export class ContactMutationsResolver {
 
     const money_address = input.money_address.toLowerCase();
 
-    const isProd = this.config.getOrThrow('isProduction');
+    const result = moneyAddressType.safeParse(money_address);
 
-    if (isProd) {
-      const result = moneyAddressType.safeParse(money_address);
-
-      if (!result.success) {
-        throw new GraphQLError(result.error.issues[0].message);
-      }
+    if (!result.success) {
+      throw new GraphQLError(result.error.issues[0].message);
     }
 
     const savedContact = await this.contactsRepo.getContact(
@@ -232,7 +228,7 @@ export class ContactMutationsResolver {
       }
     } else {
       try {
-        const rawInfo = await fetch(lightningAddressToUrl(money_address));
+        const rawInfo = await publicFetch(lightningAddressToUrl(money_address));
 
         const info = await rawInfo.json();
 

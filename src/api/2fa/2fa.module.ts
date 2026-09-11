@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from 'src/libs/auth/auth.module';
 import { PasskeyModule } from 'src/libs/passkey/passkey.module';
 import { TwoFactorRepoModule } from 'src/repo/2fa/2fa.module';
 import { AccountRepoModule } from 'src/repo/account/account.module';
@@ -22,6 +23,7 @@ import {
 @Module({
   imports: [
     AccountModule,
+    AuthModule,
     TwoFactorRepoModule,
     AccountRepoModule,
     PasskeyModule,
